@@ -1,0 +1,51 @@
+syntax="proto3";
+
+package pushd.pb;
+
+option go_package="pb";
+
+service Session{
+	rpc Online(SessionOnlineRequest)returns (SessionOnlineResponse);
+	//rpc Update(SessionUpdateRequest)returns (SessionUpdateResponse);
+//	rpc Offline(SessionOfflineRequest)returns (SessionOfflineResponse);
+	//rpc Info(SessionInfoRequest)returns (SessionInfoResponse);
+}
+
+message SessionOnlineRequest{
+	string GateServerIP = 1;
+	string GateServerPort = 2;
+	string ClientId = 3;
+	string Platform = 4;
+	uint64 CreatedAt = 5;
+}
+message SessionOnlineResponse{
+}
+
+message SessionOfflineRequest{
+	string ClientId = 1;
+}
+message SessionOfflineResponse{
+}
+
+message SessionUpdateRequest{
+	string GateServerIP = 1;
+	string GateServerPort = 2;
+	string ClientId = 3;
+	string Platform = 4;
+	uint64 UpdatedAt = 5;
+}
+message SessionUpdateResponse{
+}
+
+message SessionInfoRequest{
+	string ClientId = 1;
+}
+message SessionInfoResponse{
+	string GateServerIP = 1;
+	string GateServerPort = 2;
+	string ClientId = 3;
+	string Platform = 4;
+	uint64 Status = 5;
+	uint64 CreatedAt = 6;
+	uint64 UpdatedAt=7;
+}

@@ -1,0 +1,19 @@
+syntax="proto3";
+
+package pushd.pb;
+
+option go_package="pb";
+
+service Gate{
+	rpc Push(GatePushRequest)returns (GatePushResponse);
+}
+
+message GatePushRequest{
+	string ClientId = 1;
+	uint32 PacketId = 2;
+	string Content = 3;
+	uint32 Kind = 4;
+	string Extra = 5;
+}
+message GatePushResponse{
+}
