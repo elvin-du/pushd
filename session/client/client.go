@@ -3,8 +3,11 @@ package client
 import (
 	"context"
 	"io"
+	"pushd/pb"
 	"pushd/session"
-	//	"time"
+	"time"
+
+	"google.golang.org/grpc"
 
 	"github.com/go-kit/kit/endpoint"
 	"github.com/go-kit/kit/log"
@@ -14,59 +17,42 @@ import (
 	grpctransport "github.com/go-kit/kit/transport/grpc"
 )
 
-func NewClient() {
-	etcdAddrs := []string{""}
-	cli, err := etcd.NewClient(context.Background(), etcdAddrs, etcd.ClientOptions{})
+func New(etcdAddrs []string, logger log.Logger) (session.Service, error) {
+	factory := factoryFor()
+	opts := etcd.ClientOptions{}
+	cli, err := etcd.NewClient(context.Background(), etcdAddrs, opts)
 	if nil != err {
-		return
+		return nil, err
 	}
 
-	conn, err := grpc.Dial(":5504", grpc.WithInsecure(), grpc.WithTimeout(time.Second))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v", err)
-		os.Exit(1)
+	var (
+		retryMax     = 3
+		retryTimeout = 500 * time.Millisecond
+	)
+	subscriber, err := etcd.NewSubscriber(cli, "/Session/Online", factory, logger)
+	if nil != err {
+		return nil, err
 	}
-	defer conn.Close()
+	balancer := lb.NewRoundRobin(subscriber)
+	retry := lb.Retry(retryMax, retryTimeout, balancer)
 
-	grpctransport.NewClient()
+	return &session.Endpoints{OnlineEndpoint: retry}, nil
 }
 
-//func New(conn *grpc.ClientConn, tracer stdopentracing.Tracer, logger log.Logger) session.Service {
-//	limiter := ratelimit.NewTokenBucketLimiter(jujuratelimit.NewBucketWithRate(100, 100))
-
-//	var onlineEndpoint endpoint.Endpoint
-//	{
-//		onlineEndpoint = grpctransport.NewClient(
-//			conn,
-//			"session",
-//			"Online",
-//			session.EncodeGRPCOnlineRequest,
-//			session.DecodeGRPCOnlineResponse,
-//			pb.SessionOnlineResponse{},
-//			//			grpctransport.ClientBefore(opentracing.ToGRPCRequest(tracer, logger)),
-//		).Endpoint()
-//		//		onlineEndpoint = opentracing.TraceClient(tracer, "Sum")(onlineEndpoint)
-//		onlineEndpoint = limiter(onlineEndpoint)
-//		//		onlineEndpoint = circuitbreaker.Gobreaker(gobreaker.NewCircuitBreaker(gobreaker.Settings{
-//		//			Name:    "Sum",
-//		//			Timeout: 30 * time.Second,
-//		//		}))(onlineEndpoint)
-//	}
-
-//	return session.Endpoints{
-//		OnlineEndpoint: onlineEndpoint,
-//	}
-//}
-
-//func factoryFor(makeEndpoint func(session.Service) endpoint.Endpoint) sd.Factory {
-//	return func(instance string) (endpoint.Endpoint, io.Closer, error) {
-//		service, err := session.MakeClientEndpoints(instance)
-//		if err != nil {
-//			return nil, nil, err
-//		}
-//		return makeEndpoint(service), nil, nil
-//	}
-//}
-
-//func MakeClientEndpoints(instance string) (session.Endpoints, error) {
-//}
+func factoryFor() sd.Factory {
+	return func(instance string) (endpoint.Endpoint, io.Closer, error) {
+		conn, err := grpc.Dial(instance, grpc.WithInsecure(), grpc.WithTimeout(time.Second))
+		if err != nil {
+			return nil, nil, err
+		}
+		//		defer conn.Close()
+		return grpctransport.NewClient(
+			conn,
+			"Session",
+			"Online",
+			session.EncodeGRPCOnlineRequest,
+			session.DecodeGRPCOnlineResponse,
+			pb.SessionOnlineResponse{},
+		).Endpoint(), nil, nil
+	}
+}

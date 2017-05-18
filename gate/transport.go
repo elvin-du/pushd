@@ -49,3 +49,12 @@ func EncodeGRPCPushResponse(_ context.Context, response interface{}) (interface{
 	resp := response.(pushResponse)
 	return &pb.GatePushResponse{}, resp.Err
 }
+
+func DecodeGRPCPushResponse(_ context.Context, grpcResp interface{}) (interface{}, error) {
+	return pushResponse{}, nil
+}
+
+func EncodeGRPCPushRequest(_ context.Context, request interface{}) (interface{}, error) {
+	req := request.(pushRequest)
+	return &pb.GatePushRequest{ClientId: req.ClientId, Content: req.Content, Extra: req.Extra, Kind: req.Kind}, nil
+}

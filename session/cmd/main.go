@@ -1,32 +1,38 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
 	"os"
 	"os/signal"
-	"pushd/session"
 	"pushd/pb"
+	"pushd/session"
+	"strings"
 	"syscall"
 
-	"google.golang.org/grpc"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/sd/etcd"
+	//	grpctransport "github.com/go-kit/kit/transport/grpc"
+	"google.golang.org/grpc"
 )
 
 var (
-	tcpAddr     *string
 	grpcAddr    *string
 	appdashAddr *string
+	etcdAddrs   []string
 )
 
 func init() {
 	grpcAddr = flag.String("grpc.addr", ":5503", "TCP listen address")
 	appdashAddr = flag.String("appdash.addr", "", "Enable Appdash tracing via an Appdash server host:port")
+	etcdAddresses := flag.String("etcd.addrs", "http://127.0.0.1:2379", "ETCD V2 servers host:port,host:port")
+	flag.Parse()
+	etcdAddrs = strings.Split(*etcdAddresses, ",")
 }
 
 func main() {
-	flag.Parse()
 	var logger log.Logger
 	{
 		logger = log.NewLogfmtLogger(os.Stderr)
@@ -49,6 +55,7 @@ func main() {
 	go func() {
 		c := make(chan os.Signal)
 		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+
 		errc <- fmt.Errorf("%s", <-c)
 	}()
 
@@ -69,6 +76,18 @@ func main() {
 		logger.Log("addr", *grpcAddr)
 		errc <- s.Serve(ln)
 	}()
+
+	cli, err := etcd.NewClient(context.Background(), etcdAddrs, etcd.ClientOptions{})
+	if nil != err {
+		logger.Log("err", err)
+		errc <- err
+	}
+	onlineRegistar := etcd.NewRegistrar(cli, etcd.Service{
+		Key:   "/Session/Online/127.0.0.1" + *grpcAddr,
+		Value: "127.0.0.1" + *grpcAddr,
+	}, logger)
+	onlineRegistar.Register()
+	defer onlineRegistar.Deregister()
 
 	logger.Log("exit", <-errc)
 }
