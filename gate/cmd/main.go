@@ -14,7 +14,10 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/sd/etcd"
+	"github.com/go-kit/kit/tracing/opentracing"
 	"google.golang.org/grpc"
+	"sourcegraph.com/sourcegraph/appdash"
+	appdashot "sourcegraph.com/sourcegraph/appdash/opentracing"
 )
 
 var (
@@ -27,7 +30,7 @@ var (
 func init() {
 	tcpAddr = flag.String("tcp.addr", ":5501", "GRPC listen address")
 	grpcAddr = flag.String("grpc.addr", ":5502", "TCP listen address")
-	appdashAddr = flag.String("appdash.addr", "", "Enable Appdash tracing via an Appdash server host:port")
+	appdashAddr = flag.String("appdash.addr", ":5507", "Enable Appdash tracing via an Appdash server host:port")
 	etcdAddresses := flag.String("etcd.addrs", "http://127.0.0.1:2379", "ETCD V2 servers host:port,host:port")
 	flag.Parse()
 	etcdAddrs = strings.Split(*etcdAddresses, ",")
@@ -52,6 +55,9 @@ func main() {
 	{
 		endpoints = gate.MakeServerEndpoints(s)
 	}
+
+	tracer := appdashot.NewTracer(appdash.NewRemoteCollector(*appdashAddr))
+	endpoints.PushEndpoint = opentracing.TraceServer(tracer, "Push")(endpoints.PushEndpoint)
 
 	errc := make(chan error)
 	go func() {

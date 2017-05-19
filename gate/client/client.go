@@ -3,8 +3,8 @@ package client
 import (
 	"context"
 	"io"
-	"pushd/pb"
 	"pushd/gate"
+	"pushd/pb"
 	"time"
 
 	"google.golang.org/grpc"
@@ -14,11 +14,16 @@ import (
 	"github.com/go-kit/kit/sd"
 	"github.com/go-kit/kit/sd/etcd"
 	"github.com/go-kit/kit/sd/lb"
+	"github.com/go-kit/kit/tracing/opentracing"
 	grpctransport "github.com/go-kit/kit/transport/grpc"
+	stdopentracing "github.com/opentracing/opentracing-go"
+	"sourcegraph.com/sourcegraph/appdash"
+	appdashot "sourcegraph.com/sourcegraph/appdash/opentracing"
 )
 
-func New(etcdAddrs []string, logger log.Logger) (gate.Service, error) {
-	factory := factoryFor()
+func New(etcdAddrs []string, appdashAddr string, logger log.Logger) (gate.Service, error) {
+	tracer := appdashot.NewTracer(appdash.NewRemoteCollector(appdashAddr))
+	factory := factoryFor(tracer, "Push")
 	opts := etcd.ClientOptions{}
 	cli, err := etcd.NewClient(context.Background(), etcdAddrs, opts)
 	if nil != err {
@@ -39,20 +44,23 @@ func New(etcdAddrs []string, logger log.Logger) (gate.Service, error) {
 	return &gate.Endpoints{PushEndpoint: retry}, nil
 }
 
-func factoryFor() sd.Factory {
+func factoryFor(tracer stdopentracing.Tracer, svcName string) sd.Factory {
 	return func(instance string) (endpoint.Endpoint, io.Closer, error) {
 		conn, err := grpc.Dial(instance, grpc.WithInsecure(), grpc.WithTimeout(time.Second))
 		if err != nil {
 			return nil, nil, err
 		}
 		//		defer conn.Close()
-		return grpctransport.NewClient(
+
+		endpoint := grpctransport.NewClient(
 			conn,
 			"Gate",
 			"Push",
-			gate.EncodeGRPCOnlineRequest,
-			gate.DecodeGRPCOnlineResponse,
+			gate.EncodeGRPCPushRequest,
+			gate.DecodeGRPCPushResponse,
 			pb.GatePushResponse{},
-		).Endpoint(), nil, nil
+		).Endpoint()
+		endpoint = opentracing.TraceClient(tracer, svcName)(endpoint)
+		return endpoint, nil, nil
 	}
 }

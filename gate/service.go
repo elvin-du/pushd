@@ -30,7 +30,7 @@ func (s *service) Push(ctx context.Context, clientId, content, extra string, kin
 		logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 		logger = log.With(logger, "caller", log.DefaultCaller)
 	}
-	svc, err := client.New([]string{"http://127.0.0.1:2379"}, logger)
+	svc, err := client.New([]string{"http://127.0.0.1:2379"}, "127.0.0.1:5507", logger)
 	if nil != err {
 		logger.Log("err:", err)
 		return err
